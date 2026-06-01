@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* 画面全体の背景を黒、文字を白に固定します */
+body {
+  background-color: #0d0d12;
+  color: #f3f4f6;
+}
