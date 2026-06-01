@@ -7,24 +7,44 @@ from datetime import datetime
 
 app = FastAPI(
     title="食事管理アプリ API",
-    description="ボディメイクに特化したPFC・カロリー・アミノ酸管理バックエンド",
-    version="1.0"
+    description="ボディメイクに特化したPFC・カロリー・アミノ酸管理バックエンド（個人識別対応版）",
+    version="1.1"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],  # TauriやCapacitorからの通信を確実に通すため幅広く許可
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# データベースの初期設定と自動列追加（移行用）
+def init_db():
+    conn = sqlite3.connect("app.db")
+    cursor = conn.cursor()
+    # 既存のテーブル構造を確認し、user_id列がなければ追加する
+    cursor.execute("PRAGMA table_info(meal_logs)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if columns and "user_id" not in columns:
+        try:
+            cursor.execute("ALTER TABLE meal_logs ADD COLUMN user_id TEXT DEFAULT 'default_user'")
+            conn.commit()
+            print("食事ログテーブルに user_id 列を追加しました。")
+        except Exception as e:
+            print(f"列追加スキップ（またはエラー）: {e}")
+    conn.close()
+
+init_db()
 
 api_client = openfoodfacts.API(
     user_agent="FitnessMacroApp/1.0 (contact: your_email@example.com)",
     country="jp"
 )
 
+# ─── データモデルの定義（user_idを必須に拡張） ───
 class MealCreate(BaseModel):
+    user_id: str  # 👈 誰のデータか識別するために必須化
     food_name: str
     calories: float
     protein: float
@@ -33,13 +53,12 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str | None = None
 
-# 機能説明: 分量変更時にフロントから受け取るデータの形
 class MealUpdate(BaseModel):
     weight_g: float
 
 @app.get("/", tags=["基本"])
 def read_root():
-    return {"message": "食事管理アプリのバックエンドサーバーが正常稼働中です！"}
+    return {"message": "食事管理アプリの個人識別対応バックエンドが正常稼働中です！"}
 
 
 # ─── ① ハイブリッド検索API ───
@@ -96,7 +115,7 @@ def search_food(keyword: str = Query(..., description="検索したい食品名"
     return {"keyword": keyword, "results": [], "message": "食品が見つかりませんでした"}
 
 
-# ─── ② 食事記録登録API ───
+# ─── ② 食事記録登録API（user_idを保存） ───
 @app.post("/meals", tags=["食事ログ記録"])
 def add_meal_log(meal: MealCreate):
     date_str = meal.eaten_date
@@ -106,21 +125,18 @@ def add_meal_log(meal: MealCreate):
     conn = sqlite3.connect("app.db")
     cursor = conn.cursor()
     query = """
-    INSERT INTO meal_logs (food_name, calories, protein, fat, carbs, weight_g, eaten_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO meal_logs (user_id, food_name, calories, protein, fat, carbs, weight_g, eaten_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """
-    cursor.execute(query, (meal.food_name, meal.calories, meal.protein, meal.fat, meal.carbs, meal.weight_g, date_str))
+    cursor.execute(query, (meal.user_id, meal.food_name, meal.calories, meal.protein, meal.fat, meal.carbs, meal.weight_g, date_str))
     conn.commit()
     conn.close()
     return {"status": "success", "message": f"{meal.food_name} を記録しました"}
 
 
-# ─── ③ 食事記録分量変更API（新規追加） ───
+# ─── ③ 食事記録分量変更API ───
 @app.put("/meals/{meal_id}", tags=["食事ログ記録"])
 def update_meal_log(meal_id: int, data: MealUpdate):
-    """
-    指定されたIDの食事記録の分量（グラム数）を上書き更新します。
-    """
     conn = sqlite3.connect("app.db")
     cursor = conn.cursor()
     cursor.execute("UPDATE meal_logs SET weight_g = ? WHERE rowid = ?", (data.weight_g, meal_id))
@@ -140,16 +156,24 @@ def delete_meal_log(meal_id: int):
     return {"status": "success", "message": "記録を削除しました"}
 
 
-# ─── ⑤ 1日合計集計API（rowidの引き渡しに対応） ───
+# ─── ⑤ 1日合計集計API（指定された user_id で狙い撃ち） ───
 @app.get("/summary", tags=["食事ログ記録"])
-def get_daily_summary(date: str = Query(None, description="集計したい日付 (例: YYYY-MM-DD)")):
+def get_daily_summary(
+    date: str = Query(None, description="集計したい日付 (例: YYYY-MM-DD)"),
+    user_id: str = Query("default_user", description="ユーザー識別ID") # 👈 新しく追加
+):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
         
     conn = sqlite3.connect("app.db")
     cursor = conn.cursor()
-    query = "SELECT rowid, food_name, calories, protein, fat, carbs, weight_g, eaten_date FROM meal_logs WHERE eaten_date LIKE ?"
-    cursor.execute(query, (f"{date}%",))
+    # WHERE句に「user_id = ?」を追加し、他人のデータが絶対に混ざらないようにガード
+    query = """
+    SELECT rowid, food_name, calories, protein, fat, carbs, weight_g, eaten_date 
+    FROM meal_logs 
+    WHERE eaten_date LIKE ? AND user_id = ?
+    """
+    cursor.execute(query, (f"{date}%", user_id))
     logs = cursor.fetchall()
     conn.close()
     
