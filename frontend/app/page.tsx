@@ -5,7 +5,6 @@ import { useState, useEffect } from "react";
 interface MealLog {
   id: number; food_name: string; weight_g: number; calories: number;
   protein: number; fat: number; carbs: number; eaten_time?: string;
-  base_nutrients?: { calories: number; protein: number; fat: number; carbs: number };
 }
 interface DailySummary {
   date: string; meals: MealLog[];
@@ -15,87 +14,78 @@ interface DailySummary {
 export default function Home() {
   const target = { kcal: 2000, p: 150, f: 60, c: 215 };
   
-  // 各種状態管理（カレンダー日付、取得データ、新規登録用、編集用ポップアップなど）
+  // ⭕️ あなた専用の正しい本物クラウドサーバーの住所を設定
+  const BASE_URL = "https://onrender.com";
+
   const [selectedDate, setSelectedDate] = useState("2026-06-01");
   const [summary, setSummary] = useState<DailySummary>({ date: selectedDate, total: { calories: 0, protein: 0, fat: 0, carbs: 0 }, meals: [] });
   const [isOpen, setIsOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false); // 分量修正ポップアップの開閉
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedFood, setSelectedFood] = useState<any | null>(null);
-  const [editingMeal, setEditingMeal] = useState<MealLog | null>(null); // 現在修正中の食事データ
+  const [editingMeal, setEditingMeal] = useState<MealLog | null>(null);
   const [weight, setWeight] = useState("100");
-  const [editWeight, setEditWeight] = useState("100"); // 修正後のグラム数
+  const [editWeight, setEditWeight] = useState("100");
   const [activeHour, setActiveHour] = useState("12");
 
-  // 今日の一覧と合計データをバックエンドから取得
+  // 機能説明: 正しい本番URLから本日のデータを高速取得
   const fetchSummary = () => {
-    fetch(`http://localhost:8000/summary?date=${selectedDate}`)
-      .then(res => res.json())
-      .then(data => setSummary(data))
-      .catch(err => console.error(err));
+    fetch(`${BASE_URL}/summary?date=${selectedDate}`)
+      .then(r => r.json())
+      .then(d => setSummary(d))
+      .catch(e => console.error("通信エラー:", e));
   };
 
   useEffect(() => {
     fetchSummary();
   }, [selectedDate]);
 
-  // 食品キーワード検索
+  // 機能説明: 本物サーバー経由で食品をキーワード検索
   const handleSearch = () => {
     if (!keyword) return;
-    fetch(`http://localhost:8000/search?keyword=${encodeURIComponent(keyword)}`)
-      .then(res => res.json())
-      .then(data => setSearchResults(data.results || []))
-      .catch(err => console.error(err));
+    fetch(`${BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`)
+      .then(r => r.json())
+      .then(d => setSearchResults(d.results || []))
+      .catch(e => console.error("検索エラー:", e));
   };
 
-  // 新規食事登録
+  // 機能説明: 本物サーバーへ新しく食事を登録
   const handleLogMeal = () => {
     if (!selectedFood) return;
-    const timeStr = `${activeHour.padStart(2, "0")}:00`;
-    fetch("http://localhost:8000/meals", {
+    fetch(`${BASE_URL}/meals`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         food_name: selectedFood.name, calories: selectedFood.calories,
         protein: selectedFood.protein, fat: selectedFood.fat, carbs: selectedFood.carbs,
-        weight_g: parseFloat(weight), eaten_date: `${selectedDate} ${timeStr}`
+        weight_g: parseFloat(weight), eaten_date: `${selectedDate} ${activeHour.padStart(2, "0")}:00`
       })
-    }).then(res => res.json()).then(() => {
+    }).then(r => r.json()).then(() => {
       fetchSummary(); setIsOpen(false); setKeyword(""); setSearchResults([]); setSelectedFood(null);
-    }).catch(err => console.error(err));
+    }).catch(e => console.error("登録エラー:", e));
   };
 
-  // 機能説明: 食事の削除APIを叩き、成功したらダッシュボードを即座に再取得
-  const handleDeleteMeal = (mealId: number) => {
-    fetch(`http://localhost:8000/meals/${mealId}`, { method: "DELETE" })
-      .then(res => res.json())
+  // 機能説明: 本物サーバーから食事記録を消去
+  const handleDeleteMeal = (id: number) => {
+    fetch(`${BASE_URL}/meals/${id}`, { method: "DELETE" })
+      .then(r => r.json())
       .then(() => fetchSummary())
-      .catch(err => console.error(err));
+      .catch(e => console.error("削除エラー:", e));
   };
 
-  // 機能説明: 食事の分量変更（上書き修正）APIを叩き、成功したらダッシュボードを即座に再取得
+  // 機能説明: 本物サーバーの食事分量を上書き修正
   const handleUpdateMeal = () => {
     if (!editingMeal) return;
-    fetch(`http://localhost:8000/meals/${editingMeal.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+    fetch(`${BASE_URL}/meals/${editingMeal.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ weight_g: parseFloat(editWeight) })
-    }).then(res => res.json()).then(() => {
+    }).then(r => r.json()).then(() => {
       fetchSummary(); setIsEditOpen(false); setEditingMeal(null);
-    }).catch(err => console.error(err));
+    }).catch(e => console.error("修正エラー:", e));
   };
 
-  const openLogModal = (hour: number) => {
-    setActiveHour(String(hour));
-    setIsOpen(true);
-  };
-
-  // 編集ポップアップを起動する
-  const openEditModal = (meal: MealLog) => {
-    setEditingMeal(meal);
-    setEditWeight(String(meal.weight_g));
-    setIsEditOpen(true);
-  };
+  const openLogModal = (h: number) => { setActiveHour(String(h)); setIsOpen(true); };
+  const openEditModal = (m: MealLog) => { setEditingMeal(m); setEditWeight(String(m.weight_g)); setIsEditOpen(true); };
 
   const current = summary.total;
   const pct = Math.min((current.calories / target.kcal) * 100, 100);
@@ -149,11 +139,12 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ─── 右カラム：24時間タイムライン（PC版で自動ワイド化） ─── */}
+        {/* ─── 右カラム：24時間タイムライン ─── */}
         <div className="bg-neutral-900 rounded-3xl p-6 border border-neutral-800 shadow-xl text-xs md:text-sm w-full">
           <h2 className="text-sm md:text-base font-bold text-neutral-300 mb-4">24時間食事タイムライン</h2>
           <div className="space-y-4 max-h-[400px] md:max-h-[550px] overflow-y-auto pr-1">
             {hours.map((hour) => {
+              // 各時間帯に合致する食事をフィルタリング
               const hourMeals = summary.meals.filter(m => {
                 if (!m.eaten_time) return false;
                 return parseInt(m.eaten_time.split(":")) === hour;
@@ -205,12 +196,12 @@ export default function Home() {
             </div>
             <div className="flex gap-2 mb-4">
               <input type="text" placeholder="食品名を入力..." value={keyword} onChange={e => setKeyword(e.target.value)} className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500" />
-              <button onClick={handleSearch} className="bg-orange-500 text-white font-bold text-sm px-4 py-2 rounded-xl">検索</button>
+              <button onClick={handleSearch} className="bg-orange-500 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors">検索</button>
             </div>
             {searchResults.length > 0 && (
               <div className="space-y-2 mb-4 max-h-40 overflow-y-auto border-b border-neutral-800 pb-4">
                 {searchResults.map((f, i) => (
-                  <button key={i} onClick={() => setSelectedFood(f)} className={`w-full text-left p-3 rounded-xl border text-xs ${selectedFood?.name === f.name ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-neutral-800/50 border-neutral-800 text-neutral-300'}`}>
+                  <button key={i} onClick={() => setSelectedFood(f)} className={`w-full text-left p-3 rounded-xl border text-xs transition-colors ${selectedFood?.name === f.name ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-neutral-800/50 border-neutral-800 text-neutral-300'}`}>
                     <div className="font-bold line-clamp-1">{f.name}</div>
                     <div className="text-neutral-400 text-[10px] mt-0.5">100g: {f.calories}kcal | P:{f.protein}g F:{f.fat}g C:{f.carbs}g</div>
                   </button>
@@ -230,7 +221,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ② 機能説明: 食事をタップした時に起動する分量の上書き修正用ポップアップ */}
+      {/* ② 分量の上書き修正用ポップアップ */}
       {isEditOpen && editingMeal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
           <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
