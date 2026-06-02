@@ -94,7 +94,7 @@ def search_food(keyword: str):
         }
         headers = {'User-Agent': 'FitnessMacroApp - PC - Version 1.0'}
         
-        response = requests.get(url, params=params, headers=headers, timeout=3)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
             products = data.get("products", [])
