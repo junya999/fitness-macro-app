@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import urllib.parse
 import urllib.request
 import json
 from fastapi import FastAPI, HTTPException
@@ -18,9 +19,11 @@ app.add_middleware(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "app.db")
+# ⭕️ 古いバグデータを強制回避するため、データベースのファイル名を一新しました！
+DB_PATH = os.path.join(BASE_DIR, "fitness.db")
 
 def init_db():
+    # まったく新しい綺麗な器としてデータベースを一から自動生成します
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -30,14 +33,15 @@ def init_db():
         weight_g REAL, eaten_date TEXT
     )""")
     
-    # ⭕️ 文科省データに準拠した、自炊・基本食材用の標準データベース
+    # ⭕️ carbs（炭水化物）を最初から確実に組み込んだ最新の foods テーブルを作成します
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS foods (
         id INTEGER PRIMARY KEY,
         name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL
     )""")
+    
     cursor.execute("SELECT COUNT(*) FROM foods")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone() == 0:
         gov_sample_foods = [
             ("白米/精白米(文科省標準)", 156.0, 2.5, 0.3, 37.1),
             ("玄米(文科省標準)", 152.0, 2.8, 1.0, 34.2),
@@ -67,27 +71,28 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
-# 1. ⭕️ 文科省データベース ＆ Open Food Facts API のハイブリッド爆速横断検索
 @app.get("/search")
 def search_food(keyword: str):
     results = []
     
-    # 【ステップ1】文科省ベースの内部SQLiteデータベースを高速検索
+    # 1. 新しいSQLiteデータベース（fitness.db）から文科省標準食材を高速検索
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("SELECT name, calories, protein, fat, carbs FROM foods WHERE name LIKE ?", (f"%{keyword}%",))
         rows = cursor.fetchall()
         conn.close()
-        for r in rows:
-            results.append({"name": r[0], "calories": r[1], "protein": r[2], "fat": r[3], "carbs": r[4]})
+        for row in rows:
+            results.append({"name": row[0], "calories": row[1], "protein": row[2], "fat": row[3], "carbs": row[4]})
     except Exception as e:
         print(f"SQLite検索エラー: {e}")
 
-    # 【ステップ2】Open Food FactsのオンラインAPIを叩いて世界中の市販品・バーコードデータをリアルタイム検索
+    # 2. Open Food FactsのオンラインAPI検索（⭕️ 文字コード変換バグを完全に修正済み）
     try:
-        # 日本向けの市販品データをキーワードでテキスト検索する公式エンドポイント
-        url = f"https://openfoodfacts.org{urllib.parse.quote(keyword)}&search_simple=1&action=process&json=1&page_size=10"
+        # 日本語キーワードを完全に安全なURL用文字（UTF-8）にエンコードします
+        encoded_keyword = urllib.parse.quote(keyword)
+        url = f"https://openfoodfacts.org{encoded_keyword}&search_simple=1&action=process&json=1&page_size=10"
+        
         req = urllib.request.Request(url, headers={'User-Agent': 'FitnessMacroApp - PC - Version 1.0'})
         with urllib.request.urlopen(req, timeout=3) as response:
             data = json.loads(response.read().decode('utf-8'))
@@ -98,13 +103,11 @@ def search_food(keyword: str):
                 if not product_name:
                     continue
                 
-                # 製造会社・ブランド名があれば、分かりやすくドッキング
                 brands = p.get("brands")
                 if brands:
                     product_name = f"[{brands}] {product_name}"
                 
                 nutriments = p.get("nutriments", {})
-                # Open Food Factsは基本的に「100gあたり」のデータが格納されています
                 calories = nutriments.get("energy-kcal_100g") or nutriments.get("energy_100g", 0)
                 protein = nutriments.get("proteins_100g", 0)
                 fat = nutriments.get("fat_100g", 0)
@@ -122,7 +125,6 @@ def search_food(keyword: str):
 
     return {"results": results}
 
-# 2. タイムラインの一覧＆サマリー取得機能
 @app.get("/summary")
 def get_summary(date: str):
     conn = sqlite3.connect(DB_PATH)
@@ -133,16 +135,16 @@ def get_summary(date: str):
     meals_list = []
     total = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
     
-    for r in rows:
-        w_factor = r[2] / 100.0
-        c_cal = round(r[3] * w_factor, 1)
-        c_p = round(r[4] * w_factor, 1)
-        c_f = round(r[5] * w_factor, 1)
-        c_c = round(r[6] * w_factor, 1)
+    for row in rows:
+        w_factor = row[2] / 100.0
+        c_cal = round(row[3] * w_factor, 1)
+        c_p = round(row[4] * w_factor, 1)
+        c_f = round(row[5] * w_factor, 1)
+        c_c = round(row[6] * w_factor, 1)
         
         meals_list.append({
-            "id": r[0], "food_name": r[1], "weight_g": r[2],
-            "calories": c_cal, "protein": c_p, "fat": c_f, "carbs": c_c, "eaten_time": r[7]
+            "id": row[0], "food_name": row[1], "weight_g": row[2],
+            "calories": c_cal, "protein": c_p, "fat": c_f, "carbs": c_c, "eaten_time": row[7]
         })
         total["calories"] += c_cal
         total["protein"] += c_p
@@ -152,7 +154,6 @@ def get_summary(date: str):
     conn.close()
     return {"date": date, "meals": meals_list, "total": {k: round(v, 1) for k, v in total.items()}}
 
-# 3. 新しい食事の登録機能
 @app.post("/meals")
 def add_meal(meal: MealCreate):
     conn = sqlite3.connect(DB_PATH)
@@ -167,7 +168,6 @@ def add_meal(meal: MealCreate):
 class WeightUpdate(BaseModel):
     weight_g: float
 
-# 4. 食事の分量上書き修正機能
 @app.put("/meals/{meal_id}")
 def update_meal(meal_id: int, data: WeightUpdate):
     conn = sqlite3.connect(DB_PATH)
@@ -177,7 +177,6 @@ def update_meal(meal_id: int, data: WeightUpdate):
     conn.close()
     return {"status": "success"}
 
-# 5. 食事の削除機能
 @app.delete("/meals/{meal_id}")
 def delete_meal(meal_id: int):
     conn = sqlite3.connect(DB_PATH)
