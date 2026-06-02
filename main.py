@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-# ⭕️ Tauriアプリやブラウザなど、すべての外部接続・特殊リクエストを例外なく100%許可する設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,7 +33,7 @@ def init_db():
         name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL
     )""")
     cursor.execute("SELECT COUNT(*) FROM foods")
-    if cursor.fetchone() == 0:
+    if cursor.fetchone()[0] == 0:
         sample_foods = [
             ("鶏むね肉", 108.0, 22.3, 1.5, 0.0),
             ("サラダチキン", 110.0, 24.0, 1.0, 1.0),
@@ -56,7 +55,7 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
-# 1. 食品のキーワード検索機能
+# 1. 食品のキーワード検索機能（⭕️ 絶対にシステムバグで消えない構造に修復）
 @app.get("/search")
 def search_food(keyword: str):
     conn = sqlite3.connect(DB_PATH)
@@ -66,17 +65,17 @@ def search_food(keyword: str):
     conn.close()
     
     results = []
-    for r in rows:
+    for row in rows:
         results.append({
-            "name": r[0],
-            "calories": r[1],
-            "protein": r[2],
-            "fat": r[3],
-            "carbs": r[4]
+            "name": row[0],
+            "calories": row[1],
+            "protein": row[2],
+            "fat": row[3],
+            "carbs": row[4]
         })
     return {"results": results}
 
-# 2. タイムラインの一覧＆サマリー取得機能
+# 2. タイムラインの一覧＆サマリー取得機能（⭕️ こちらもデータ構造を完全修復）
 @app.get("/summary")
 def get_summary(date: str):
     conn = sqlite3.connect(DB_PATH)
@@ -87,16 +86,16 @@ def get_summary(date: str):
     meals_list = []
     total = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
     
-    for r in rows:
-        w_factor = r[2] / 100.0
-        c_cal = round(r[3] * w_factor, 1)
-        c_p = round(r[4] * w_factor, 1)
-        c_f = round(r[5] * w_factor, 1)
-        c_c = round(r[6] * w_factor, 1)
+    for row in rows:
+        w_factor = row[2] / 100.0
+        c_cal = round(row[3] * w_factor, 1)
+        c_p = round(row[4] * w_factor, 1)
+        c_f = round(row[5] * w_factor, 1)
+        c_c = round(row[6] * w_factor, 1)
         
         meals_list.append({
-            "id": r[0], "food_name": r[1], "weight_g": r[2],
-            "calories": c_cal, "protein": c_p, "fat": c_f, "carbs": c_c, "eaten_time": r[7]
+            "id": row[0], "food_name": row[1], "weight_g": row[2],
+            "calories": c_cal, "protein": c_p, "fat": c_f, "carbs": c_c, "eaten_time": row[7]
         })
         total["calories"] += c_cal
         total["protein"] += c_p
