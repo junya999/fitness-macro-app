@@ -12,7 +12,8 @@ interface DailySummary {
 
 export default function Home() {
   const target = { kcal: 2000, p: 150, f: 60, c: 215 };
-  const BASE_URL = "https://onrender.com"; // ⭕️本物のクラウドサーバー住所
+  
+  const BASE_URL = "https://fitness-macro-app.onrender.com";
 
   const [selectedDate, setSelectedDate] = useState("2026-06-01");
   const [summary, setSummary] = useState<DailySummary>({ date: selectedDate, total: { calories: 0, protein: 0, fat: 0, carbs: 0 }, meals: [] });
@@ -26,37 +27,44 @@ export default function Home() {
   const [editWeight, setEditWeight] = useState("100");
   const [activeHour, setActiveHour] = useState("12");
 
+  // ⭕️ mode: "cors" を追加してセキュリティブロックを突破します
   const fetchSummary = () => {
-    fetch(`${BASE_URL}/summary?date=${selectedDate}`).then(r => r.json()).then(d => setSummary(d)).catch(e => console.error(e));
+    fetch(`${BASE_URL}/summary?date=${selectedDate}`, { mode: "cors" })
+      .then(r => r.json())
+      .then(d => setSummary(d))
+      .catch(e => console.error("データ取得エラー:", e));
   };
   useEffect(() => { fetchSummary(); }, [selectedDate]);
 
-  // ⭕️ バグの原因だったURLの記号崩れを完全に修正した検索機能
+  // ⭕️ 検索機能にも mode: "cors" を徹底追加
   const handleSearch = () => {
     if (!keyword) return;
-    fetch(`${BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`)
+    fetch(`${BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`, { mode: "cors" })
       .then(r => r.json())
       .then(d => setSearchResults(d.results || []))
-      .catch(e => console.error(e));
+      .catch(e => console.error("検索通信エラー:", e));
   };
 
-  // ⭕️ ダブルクォーテーションの閉じ忘れを完全に修復した食事登録機能
   const handleLogMeal = () => {
     if (!selectedFood) return;
     fetch(`${BASE_URL}/meals`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", 
+      headers: { "Content-Type": "application/json" },
+      mode: "cors",
       body: JSON.stringify({ food_name: selectedFood.name, calories: selectedFood.calories, protein: selectedFood.protein, fat: selectedFood.fat, carbs: selectedFood.carbs, weight_g: parseFloat(weight), eaten_date: `${selectedDate} ${activeHour.padStart(2, "0")}:00` })
     }).then(r => r.json()).then(() => { fetchSummary(); setIsOpen(false); setKeyword(""); setSearchResults([]); setSelectedFood(null); }).catch(e => console.error(e));
   };
 
   const handleDeleteMeal = (id: number) => {
-    fetch(`${BASE_URL}/meals/${id}`, { method: "DELETE" }).then(r => r.json()).then(() => fetchSummary()).catch(e => console.error(e));
+    fetch(`${BASE_URL}/meals/${id}`, { method: "DELETE", mode: "cors" }).then(r => r.json()).then(() => fetchSummary()).catch(e => console.error(e));
   };
 
   const handleUpdateMeal = () => {
     if (!editingMeal) return;
     fetch(`${BASE_URL}/meals/${editingMeal.id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
+      method: "PUT", 
+      headers: { "Content-Type": "application/json" },
+      mode: "cors",
       body: JSON.stringify({ weight_g: parseFloat(editWeight) })
     }).then(r => r.json()).then(() => { fetchSummary(); setIsEditOpen(false); setEditingMeal(null); }).catch(e => console.error(e));
   };
@@ -68,7 +76,7 @@ export default function Home() {
   const pct = Math.min((current.calories / target.kcal) * 100, 100);
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
-    return (
+  return (
     <main className="min-h-screen p-4 md:p-8 max-w-md md:max-w-5xl mx-auto bg-[#0d0d12] text-neutral-100 font-sans relative">
       <header className="flex justify-between items-center mb-6">
         <div>
@@ -100,7 +108,7 @@ export default function Home() {
           <h2 className="font-bold text-neutral-300 mb-4">24時間食事タイムライン</h2>
           <div className="space-y-4 max-h-[400px] md:max-h-[550px] overflow-y-auto pr-1">
             {hours.map((h) => {
-              const hourMeals = summary.meals.filter(m => m.eaten_time ? parseInt(m.eaten_time.split(":")[0]) === h : false);
+              const hourMeals = summary.meals.filter(m => m.eaten_time ? parseInt(m.eaten_time.split(":")) === h : false);
               return (
                 <div key={h} className="flex gap-3 md:gap-4 items-center min-h-[46px] border-b border-neutral-800/40 pb-2.5 last:border-0">
                   <div className="w-10 text-neutral-500 font-bold text-right tabular-nums">{String(h).padStart(2, "0")}:00</div>
@@ -133,7 +141,6 @@ export default function Home() {
             <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-white">{activeHour.padStart(2, "0")}:00 の食事記録</h3><button onClick={() => setIsOpen(false)} className="text-neutral-400 text-sm">✕ 閉じる</button></div>
             <div className="flex gap-2 mb-4">
               <input type="text" placeholder="食品名を入力..." value={keyword} onChange={e => setKeyword(e.target.value)} className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
-              {/* ⭕️ 「精密」バグを完全に除去した正常な検索ボタン */}
               <button onClick={handleSearch} className="bg-orange-500 text-white font-bold text-sm px-4 py-2 rounded-xl">検索</button>
             </div>
             {searchResults.length > 0 && (
