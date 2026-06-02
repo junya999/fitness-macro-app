@@ -14,8 +14,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ⭕️ Renderのどの環境からでも確実に同じファイルを指すよう、絶対パスで固定します
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "app.db")
+
 def init_db():
-    conn = sqlite3.connect("app.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS meals (
@@ -51,20 +55,21 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
+# 1. 食品のキーワード検索機能
 @app.get("/search")
 def search_food(keyword: str):
-    conn = sqlite3.connect("app.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT name, calories, protein, fat, carbs FROM foods WHERE name LIKE ?", (f"%{keyword}%",))
     rows = cursor.fetchall()
     conn.close()
-    # ⭕️ 消えてしまっていたインデックス[0]〜[4]を正確に修正
     results = [{"name": r[0], "calories": r[1], "protein": r[2], "fat": r[3], "carbs": r[4]} for r in rows]
     return {"results": results}
 
+# 2. タイムラインの一覧＆サマリー取得機能
 @app.get("/summary")
 def get_summary(date: str):
-    conn = sqlite3.connect("app.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT id, food_name, weight_g, calories, protein, fat, carbs, strftime('%H:%M', eaten_date) FROM meals WHERE date(eaten_date) = date(?)", (date,))
     rows = cursor.fetchall()
@@ -73,7 +78,7 @@ def get_summary(date: str):
     total = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
     
     for r in rows:
-        w_factor = r[2] / 100.0  # ⭕️ インデックス[2]を指定して分量の換算倍率を正確に修正
+        w_factor = r[2] / 100.0
         c_cal = round(r[3] * w_factor, 1)
         c_p = round(r[4] * w_factor, 1)
         c_f = round(r[5] * w_factor, 1)
@@ -91,9 +96,10 @@ def get_summary(date: str):
     conn.close()
     return {"date": date, "meals": meals_list, "total": {k: round(v, 1) for k, v in total.items()}}
 
+# 3. 新しい食事の登録機能
 @app.post("/meals")
 def add_meal(meal: MealCreate):
-    conn = sqlite3.connect("app.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
     INSERT INTO meals (food_name, calories, protein, fat, carbs, weight_g, eaten_date)
@@ -105,18 +111,20 @@ def add_meal(meal: MealCreate):
 class WeightUpdate(BaseModel):
     weight_g: float
 
+# 4. 食事の分量上書き修正機能
 @app.put("/meals/{meal_id}")
 def update_meal(meal_id: int, data: WeightUpdate):
-    conn = sqlite3.connect("app.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("UPDATE meals SET weight_g = ? WHERE id = ?", (data.weight_g, meal_id))
     conn.commit()
     conn.close()
     return {"status": "success"}
 
+# 5. 食事の削除機能
 @app.delete("/meals/{meal_id}")
 def delete_meal(meal_id: int):
-    conn = sqlite3.connect("app.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM meals WHERE id = ?", (meal_id,))
     conn.commit()
