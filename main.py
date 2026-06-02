@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import urllib.request
+import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -19,21 +21,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "app.db")
 
 def init_db():
-    # 古い壊れたデータベースがあれば一度自動消去
-    if os.path.exists(DB_PATH):
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("SELECT carbs FROM foods LIMIT 1")
-            conn.close()
-        except sqlite3.OperationalError:
-            if 'conn' in locals(): conn.close()
-            try:
-                os.remove(DB_PATH)
-            except Exception:
-                pass
-
-    # 正しいテーブル構造で一から自動生成
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -42,23 +29,30 @@ def init_db():
         food_name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL,
         weight_g REAL, eaten_date TEXT
     )""")
+    
+    # ⭕️ 文科省データに準拠した、自炊・基本食材用の標準データベース
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS foods (
         id INTEGER PRIMARY KEY,
         name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL
     )""")
-    
-    # ⭕️ 構文エラーを完全修復！空っぽのデータベースに食品データを確実に100%流し込みます
     cursor.execute("SELECT COUNT(*) FROM foods")
     if cursor.fetchone()[0] == 0:
-        sample_foods = [
-            ("鶏むね肉", 108.0, 22.3, 1.5, 0.0),
-            ("サラダチキン", 110.0, 24.0, 1.0, 1.0),
-            ("おいしい牛乳", 69.0, 3.4, 3.8, 4.8),
-            ("白米", 156.0, 2.5, 0.3, 37.1)
+        gov_sample_foods = [
+            ("白米/精白米(文科省標準)", 156.0, 2.5, 0.3, 37.1),
+            ("玄米(文科省標準)", 152.0, 2.8, 1.0, 34.2),
+            ("鶏むね肉/皮なし(文科省標準)", 108.0, 22.3, 1.5, 0.0),
+            ("鶏ささみ(文科省標準)", 98.0, 23.0, 0.8, 0.0),
+            ("牛もも肉/赤身(文科省標準)", 125.0, 21.3, 3.8, 0.5),
+            ("豚ヒレ肉(文科省標準)", 115.0, 22.2, 1.9, 0.2),
+            ("鮭/サーモン(文科省標準)", 124.0, 22.3, 4.1, 0.1),
+            ("卵/生(文科省標準)", 142.0, 12.3, 10.3, 0.3),
+            ("バナナ/生(文科省標準)", 93.0, 1.1, 0.1, 22.5),
+            ("アボカド/生(文科省標準)", 176.0, 2.5, 17.5, 6.2),
+            ("ブロッコリー/生(文科省標準)", 37.0, 4.3, 0.4, 6.6),
+            ("オートミール(文科省標準)", 350.0, 13.7, 5.7, 69.1)
         ]
-        # VALUESのハテナマークを5個に完全固定
-        cursor.executemany("INSERT INTO foods (name, calories, protein, fat, carbs) VALUES (?, ?, ?, ?, ?)", sample_foods)
+        cursor.executemany("INSERT INTO foods (name, calories, protein, fat, carbs) VALUES (?, ?, ?, ?, ?)", gov_sample_foods)
         conn.commit()
     conn.close()
 
@@ -73,24 +67,59 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
-# 1. 食品のキーワード検索機能（⭕️ 配列インデックスのタプル展開をプロの安全な形に修正）
+# 1. ⭕️ 文科省データベース ＆ Open Food Facts API のハイブリッド爆速横断検索
 @app.get("/search")
 def search_food(keyword: str):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, calories, protein, fat, carbs FROM foods WHERE name LIKE ?", (f"%{keyword}%",))
-    rows = cursor.fetchall()
-    conn.close()
-    
     results = []
-    for r in rows:
-        results.append({
-            "name": r[0],
-            "calories": r[1],
-            "protein": r[2],
-            "fat": r[3],
-            "carbs": r[4]
-        })
+    
+    # 【ステップ1】文科省ベースの内部SQLiteデータベースを高速検索
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, calories, protein, fat, carbs FROM foods WHERE name LIKE ?", (f"%{keyword}%",))
+        rows = cursor.fetchall()
+        conn.close()
+        for r in rows:
+            results.append({"name": r[0], "calories": r[1], "protein": r[2], "fat": r[3], "carbs": r[4]})
+    except Exception as e:
+        print(f"SQLite検索エラー: {e}")
+
+    # 【ステップ2】Open Food FactsのオンラインAPIを叩いて世界中の市販品・バーコードデータをリアルタイム検索
+    try:
+        # 日本向けの市販品データをキーワードでテキスト検索する公式エンドポイント
+        url = f"https://openfoodfacts.org{urllib.parse.quote(keyword)}&search_simple=1&action=process&json=1&page_size=10"
+        req = urllib.request.Request(url, headers={'User-Agent': 'FitnessMacroApp - PC - Version 1.0'})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            products = data.get("products", [])
+            
+            for p in products:
+                product_name = p.get("product_name_ja") or p.get("product_name")
+                if not product_name:
+                    continue
+                
+                # 製造会社・ブランド名があれば、分かりやすくドッキング
+                brands = p.get("brands")
+                if brands:
+                    product_name = f"[{brands}] {product_name}"
+                
+                nutriments = p.get("nutriments", {})
+                # Open Food Factsは基本的に「100gあたり」のデータが格納されています
+                calories = nutriments.get("energy-kcal_100g") or nutriments.get("energy_100g", 0)
+                protein = nutriments.get("proteins_100g", 0)
+                fat = nutriments.get("fat_100g", 0)
+                carbs = nutriments.get("carbohydrates_100g", 0)
+                
+                results.append({
+                    "name": f"{product_name} (市販品)",
+                    "calories": round(float(calories), 1),
+                    "protein": round(float(protein), 1),
+                    "fat": round(float(fat), 1),
+                    "carbs": round(float(carbs), 1)
+                })
+    except Exception as e:
+        print(f"Open Food Facts API連携エラー: {e}")
+
     return {"results": results}
 
 # 2. タイムラインの一覧＆サマリー取得機能
@@ -160,4 +189,4 @@ def delete_meal(meal_id: int):
 
 @app.get("/")
 def read_root():
-    return {"message": "食事管理アプリのバックエンドサーバーが正常稼働中です！"}
+    return {"message": "世界中のデータベースと直結した理系マクロサーバーが正常稼働中です！"}
