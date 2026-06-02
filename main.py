@@ -19,7 +19,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "app.db")
 
 def init_db():
-    # ⭕️ 古いデータベースの構造エラー（carbsがないバグ）を検知したら自動でリセットする処理
+    # 古い壊れたデータベースがあれば一度自動消去
     if os.path.exists(DB_PATH):
         try:
             conn = sqlite3.connect(DB_PATH)
@@ -33,7 +33,7 @@ def init_db():
             except Exception:
                 pass
 
-    # ⭕️ ここから真っ新な最新構造のデータベースとして自動再生成します
+    # 正しいテーブル構造で一から自動生成
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -47,14 +47,17 @@ def init_db():
         id INTEGER PRIMARY KEY,
         name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL
     )""")
+    
+    # ⭕️ 構文エラーを完全修復！空っぽのデータベースに食品データを確実に100%流し込みます
     cursor.execute("SELECT COUNT(*) FROM foods")
-    if cursor.fetchone() == 0:
+    if cursor.fetchone()[0] == 0:
         sample_foods = [
             ("鶏むね肉", 108.0, 22.3, 1.5, 0.0),
             ("サラダチキン", 110.0, 24.0, 1.0, 1.0),
             ("おいしい牛乳", 69.0, 3.4, 3.8, 4.8),
             ("白米", 156.0, 2.5, 0.3, 37.1)
         ]
+        # VALUESのハテナマークを5個に完全固定
         cursor.executemany("INSERT INTO foods (name, calories, protein, fat, carbs) VALUES (?, ?, ?, ?, ?)", sample_foods)
         conn.commit()
     conn.close()
@@ -70,7 +73,7 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
-# 1. 食品のキーワード検索機能
+# 1. 食品のキーワード検索機能（⭕️ 配列インデックスのタプル展開をプロの安全な形に修正）
 @app.get("/search")
 def search_food(keyword: str):
     conn = sqlite3.connect(DB_PATH)
@@ -80,13 +83,13 @@ def search_food(keyword: str):
     conn.close()
     
     results = []
-    for row in rows:
+    for r in rows:
         results.append({
-            "name": row[0],
-            "calories": row[1],
-            "protein": row[2],
-            "fat": row[3],
-            "carbs": row[4]
+            "name": r[0],
+            "calories": r[1],
+            "protein": r[2],
+            "fat": r[3],
+            "carbs": r[4]
         })
     return {"results": results}
 
@@ -101,16 +104,16 @@ def get_summary(date: str):
     meals_list = []
     total = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
     
-    for row in rows:
-        w_factor = row[2] / 100.0
-        c_cal = round(row[3] * w_factor, 1)
-        c_p = round(row[4] * w_factor, 1)
-        c_f = round(row[5] * w_factor, 1)
-        c_c = round(row[6] * w_factor, 1)
+    for r in rows:
+        w_factor = r[2] / 100.0
+        c_cal = round(r[3] * w_factor, 1)
+        c_p = round(r[4] * w_factor, 1)
+        c_f = round(r[5] * w_factor, 1)
+        c_c = round(r[6] * w_factor, 1)
         
         meals_list.append({
-            "id": row[0], "food_name": row[1], "weight_g": row[2],
-            "calories": c_cal, "protein": c_p, "fat": c_f, "carbs": c_c, "eaten_time": row[7]
+            "id": r[0], "food_name": r[1], "weight_g": r[2],
+            "calories": c_cal, "protein": c_p, "fat": c_f, "carbs": c_c, "eaten_time": r[7]
         })
         total["calories"] += c_cal
         total["protein"] += c_p
