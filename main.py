@@ -19,6 +19,21 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "app.db")
 
 def init_db():
+    # ⭕️ 古いデータベースの構造エラー（carbsがないバグ）を検知したら自動でリセットする処理
+    if os.path.exists(DB_PATH):
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT carbs FROM foods LIMIT 1")
+            conn.close()
+        except sqlite3.OperationalError:
+            if 'conn' in locals(): conn.close()
+            try:
+                os.remove(DB_PATH)
+            except Exception:
+                pass
+
+    # ⭕️ ここから真っ新な最新構造のデータベースとして自動再生成します
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -33,7 +48,7 @@ def init_db():
         name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL
     )""")
     cursor.execute("SELECT COUNT(*) FROM foods")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone() == 0:
         sample_foods = [
             ("鶏むね肉", 108.0, 22.3, 1.5, 0.0),
             ("サラダチキン", 110.0, 24.0, 1.0, 1.0),
@@ -55,7 +70,7 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
-# 1. 食品のキーワード検索機能（⭕️ 絶対にシステムバグで消えない構造に修復）
+# 1. 食品のキーワード検索機能
 @app.get("/search")
 def search_food(keyword: str):
     conn = sqlite3.connect(DB_PATH)
@@ -75,7 +90,7 @@ def search_food(keyword: str):
         })
     return {"results": results}
 
-# 2. タイムラインの一覧＆サマリー取得機能（⭕️ こちらもデータ構造を完全修復）
+# 2. タイムラインの一覧＆サマリー取得機能
 @app.get("/summary")
 def get_summary(date: str):
     conn = sqlite3.connect(DB_PATH)
