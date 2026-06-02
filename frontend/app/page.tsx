@@ -12,7 +12,7 @@ interface DailySummary {
 
 export default function Home() {
   const target = { kcal: 2000, p: 150, f: 60, c: 215 };
-  const BASE_URL = "https://onrender.com";
+  const BASE_URL = "https://fitness-macro-app.onrender.com";
 
   const [selectedDate, setSelectedDate] = useState("2026-06-01");
   const [summary, setSummary] = useState<DailySummary>({ date: selectedDate, total: { calories: 0, protein: 0, fat: 0, carbs: 0 }, meals: [] });
