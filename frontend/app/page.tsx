@@ -145,20 +145,20 @@ export default function Home() {
               <input type="text" placeholder="食品名を入力..." value={keyword} onChange={e => setKeyword(e.target.value)} className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
               <button onClick={handleSearch} className="bg-orange-500 text-white font-bold text-sm px-4 py-2 rounded-xl">検索</button>
             </div>
-            {/* ⭕️ インデントを揃え、サーバーからのデータを100%確実にキャッチする修正版マッパー */}
-            {searchResults.length > 0 && (
-              <div className="space-y-2 mb-4 max-h-40 overflow-y-auto border-b border-neutral-800 pb-4">
-                {searchResults.map((f, i) => {
-                  const foodName = f.name || f.food_name || "不明な食品";
-                  return (
-                    <button key={i} onClick={() => setSelectedFood({ name: foodName, calories: f.calories, protein: f.protein, fat: f.fat, carbs: f.carbs })} className={`w-full text-left p-3 rounded-xl border text-xs transition-colors ${selectedFood?.name === foodName ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-neutral-800/50 border-neutral-800 text-neutral-300'}`}>
-                      <div className="font-bold line-clamp-1">{foodName}</div>
-                      <div className="text-neutral-400 text-[10px] mt-0.5">100g: {f.calories}kcal | P:{f.protein}g F:{f.fat}g C:{f.carbs}g</div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            
+            {/* 配列があれば無条件で全展開して強制表示させるマッパー */}
+            <div className="space-y-2 mb-4 max-h-40 overflow-y-auto border-b border-neutral-800 pb-4">
+              {searchResults.map((f, i) => {
+                const foodName = f.name || f.food_name || "不明な食品";
+                return (
+                  <button key={i} onClick={() => setSelectedFood({ name: foodName, calories: f.calories, protein: f.protein, fat: f.fat, carbs: f.carbs })} className={`w-full text-left p-3 rounded-xl border text-xs transition-colors ${selectedFood?.name === foodName ? 'bg-orange-500/10 border-orange-500 text-white' : 'bg-neutral-800/50 border-neutral-800 text-neutral-300'}`}>
+                    <div className="font-bold line-clamp-1">{foodName}</div>
+                    <div className="text-neutral-400 text-[10px] mt-0.5">100g: {f.calories}kcal | P:{f.protein}g F:{f.fat}g C:{f.carbs}g</div>
+                  </button>
+                );
+              })}
+            </div>
+
             {selectedFood && (
               <div className="space-y-4 pt-2 border-t border-neutral-800 text-sm">
                 <div><label className="font-bold text-neutral-400 block mb-1">分量（g）</label><input type="number" value={weight} onChange={e => setWeight(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none" /></div>
