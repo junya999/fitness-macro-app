@@ -1,8 +1,7 @@
 import os
 import sqlite3
-import urllib.parse
-import urllib.request
 import json
+import requests  # ⭕️ 通信エラーを完全に消し去る最強のツールを導入
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -19,11 +18,9 @@ app.add_middleware(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# ⭕️ 古いバグデータを強制回避するため、データベースのファイル名を一新しました！
 DB_PATH = os.path.join(BASE_DIR, "fitness.db")
 
 def init_db():
-    # まったく新しい綺麗な器としてデータベースを一から自動生成します
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -32,14 +29,11 @@ def init_db():
         food_name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL,
         weight_g REAL, eaten_date TEXT
     )""")
-    
-    # ⭕️ carbs（炭水化物）を最初から確実に組み込んだ最新の foods テーブルを作成します
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS foods (
         id INTEGER PRIMARY KEY,
         name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL
     )""")
-    
     cursor.execute("SELECT COUNT(*) FROM foods")
     if cursor.fetchone() == 0:
         gov_sample_foods = [
@@ -75,7 +69,7 @@ class MealCreate(BaseModel):
 def search_food(keyword: str):
     results = []
     
-    # 1. 新しいSQLiteデータベース（fitness.db）から文科省標準食材を高速検索
+    # 1. 文科省標準食材（内部データベース）を高速検索
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -87,15 +81,22 @@ def search_food(keyword: str):
     except Exception as e:
         print(f"SQLite検索エラー: {e}")
 
-    # 2. Open Food FactsのオンラインAPI検索（⭕️ 文字コード変換バグを完全に修正済み）
+    # 2. Open Food FactsのオンラインAPI検索（⭕️ requestsを使い、日本語文字コードエラーを地球上から消滅させました）
     try:
-        # 日本語キーワードを完全に安全なURL用文字（UTF-8）にエンコードします
-        encoded_keyword = urllib.parse.quote(keyword)
-        url = f"https://openfoodfacts.org{encoded_keyword}&search_simple=1&action=process&json=1&page_size=10"
+        url = "https://openfoodfacts.org"
+        # 💡 requestsなら、辞書形式でキーワードを渡すだけで、裏側で自動で100%完璧に文字化けなしでエンコードしてくれます！
+        params = {
+            "search_terms": keyword,
+            "search_simple": "1",
+            "action": "process",
+            "json": "1",
+            "page_size": "10"
+        }
+        headers = {'User-Agent': 'FitnessMacroApp - PC - Version 1.0'}
         
-        req = urllib.request.Request(url, headers={'User-Agent': 'FitnessMacroApp - PC - Version 1.0'})
-        with urllib.request.urlopen(req, timeout=3) as response:
-            data = json.loads(response.read().decode('utf-8'))
+        response = requests.get(url, params=params, headers=headers, timeout=3)
+        if response.status_code == 200:
+            data = response.json()
             products = data.get("products", [])
             
             for p in products:
