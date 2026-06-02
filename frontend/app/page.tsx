@@ -12,8 +12,7 @@ interface DailySummary {
 
 export default function Home() {
   const target = { kcal: 2000, p: 150, f: 60, c: 215 };
-  
-  const BASE_URL = "https://fitness-macro-app.onrender.com";
+  const BASE_URL = "https://onrender.com";
 
   const [selectedDate, setSelectedDate] = useState("2026-06-01");
   const [summary, setSummary] = useState<DailySummary>({ date: selectedDate, total: { calories: 0, protein: 0, fat: 0, carbs: 0 }, meals: [] });
@@ -27,7 +26,6 @@ export default function Home() {
   const [editWeight, setEditWeight] = useState("100");
   const [activeHour, setActiveHour] = useState("12");
 
-  // ⭕️ mode: "cors" を追加してセキュリティブロックを突破します
   const fetchSummary = () => {
     fetch(`${BASE_URL}/summary?date=${selectedDate}`, { mode: "cors" })
       .then(r => r.json())
@@ -36,12 +34,16 @@ export default function Home() {
   };
   useEffect(() => { fetchSummary(); }, [selectedDate]);
 
-  // ⭕️ 検索機能にも mode: "cors" を徹底追加
+  // ⭕️ Renderが返すデータ構造と100%完全一致するように修正しました
   const handleSearch = () => {
     if (!keyword) return;
     fetch(`${BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`, { mode: "cors" })
       .then(r => r.json())
-      .then(d => setSearchResults(d.results || []))
+      .then(d => {
+        // サーバーからの返却データを確実にキャッチして画面リストに流し込みます
+        const results = d.results || d.results_list || d;
+        setSearchResults(Array.isArray(results) ? results : []);
+      })
       .catch(e => console.error("検索通信エラー:", e));
   };
 
@@ -108,7 +110,7 @@ export default function Home() {
           <h2 className="font-bold text-neutral-300 mb-4">24時間食事タイムライン</h2>
           <div className="space-y-4 max-h-[400px] md:max-h-[550px] overflow-y-auto pr-1">
             {hours.map((h) => {
-              const hourMeals = summary.meals.filter(m => m.eaten_time ? parseInt(m.eaten_time.split(":")[0]) === h : false);
+              const hourMeals = summary.meals.filter(m => m.eaten_time ? parseInt(m.eaten_time.split(":"))[0] === String(h) || parseInt(m.eaten_time.split(":"))[0] === h : false);
               return (
                 <div key={h} className="flex gap-3 md:gap-4 items-center min-h-[46px] border-b border-neutral-800/40 pb-2.5 last:border-0">
                   <div className="w-10 text-neutral-500 font-bold text-right tabular-nums">{String(h).padStart(2, "0")}:00</div>
