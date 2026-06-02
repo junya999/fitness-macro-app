@@ -58,7 +58,7 @@ def search_food(keyword: str):
     cursor.execute("SELECT name, calories, protein, fat, carbs FROM foods WHERE name LIKE ?", (f"%{keyword}%",))
     rows = cursor.fetchall()
     conn.close()
-    # ⭕️ 配列のインデックス（[0]〜[4]）を正確に指定するように修正しました
+    # ⭕️ 消えてしまっていたインデックス[0]〜[4]を正確に修正
     results = [{"name": r[0], "calories": r[1], "protein": r[2], "fat": r[3], "carbs": r[4]} for r in rows]
     return {"results": results}
 
@@ -73,7 +73,7 @@ def get_summary(date: str):
     total = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
     
     for r in rows:
-        w_factor = r[2] / 100.0  # ⭕️ 分量の換算倍率を正確に修正
+        w_factor = r[2] / 100.0  # ⭕️ インデックス[2]を指定して分量の換算倍率を正確に修正
         c_cal = round(r[3] * w_factor, 1)
         c_p = round(r[4] * w_factor, 1)
         c_f = round(r[5] * w_factor, 1)
