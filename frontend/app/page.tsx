@@ -147,7 +147,7 @@ export default function Home() {
               // 各時間帯に合致する食事をフィルタリング
               const hourMeals = summary.meals.filter(m => {
                 if (!m.eaten_time) return false;
-                return parseInt(m.eaten_time.split(":")) === hour;
+                return m.eaten_time ? parseInt(m.eaten_time.split(":")[0]) === hour : false;
               });
 
               return (
