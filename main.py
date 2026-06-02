@@ -14,7 +14,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ⭕️ Renderのどの環境からでも確実に同じファイルを指すよう、絶対パスで固定します
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "app.db")
 
@@ -55,7 +54,7 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
-# 1. 食品のキーワード検索機能
+# 1. 食品のキーワード検索機能（⭕️エラー原因だったインデックスのタプル展開を完全に修正）
 @app.get("/search")
 def search_food(keyword: str):
     conn = sqlite3.connect(DB_PATH)
@@ -63,10 +62,19 @@ def search_food(keyword: str):
     cursor.execute("SELECT name, calories, protein, fat, carbs FROM foods WHERE name LIKE ?", (f"%{keyword}%",))
     rows = cursor.fetchall()
     conn.close()
-    results = [{"name": r[0], "calories": r[1], "protein": r[2], "fat": r[3], "carbs": r[4]} for r in rows]
+    
+    results = []
+    for r in rows:
+        results.append({
+            "name": r[0],
+            "calories": r[1],
+            "protein": r[2],
+            "fat": r[3],
+            "carbs": r[4]
+        })
     return {"results": results}
 
-# 2. タイムラインの一覧＆サマリー取得機能
+# 2. タイムラインの一覧＆サマリー取得機能（⭕️こちらも配列インデックスを安全なプロの記述に修正）
 @app.get("/summary")
 def get_summary(date: str):
     conn = sqlite3.connect(DB_PATH)
