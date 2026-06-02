@@ -6,12 +6,14 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
+# ⭕️ Tauriアプリやブラウザなど、すべての外部接続・特殊リクエストを例外なく100%許可する設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,7 +34,7 @@ def init_db():
         name TEXT, calories REAL, protein REAL, fat REAL, carbs REAL
     )""")
     cursor.execute("SELECT COUNT(*) FROM foods")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone() == 0:
         sample_foods = [
             ("鶏むね肉", 108.0, 22.3, 1.5, 0.0),
             ("サラダチキン", 110.0, 24.0, 1.0, 1.0),
@@ -54,7 +56,7 @@ class MealCreate(BaseModel):
     weight_g: float
     eaten_date: str
 
-# 1. 食品のキーワード検索機能（⭕️エラー原因だったインデックスのタプル展開を完全に修正）
+# 1. 食品のキーワード検索機能
 @app.get("/search")
 def search_food(keyword: str):
     conn = sqlite3.connect(DB_PATH)
@@ -74,7 +76,7 @@ def search_food(keyword: str):
         })
     return {"results": results}
 
-# 2. タイムラインの一覧＆サマリー取得機能（⭕️こちらも配列インデックスを安全なプロの記述に修正）
+# 2. タイムラインの一覧＆サマリー取得機能
 @app.get("/summary")
 def get_summary(date: str):
     conn = sqlite3.connect(DB_PATH)
