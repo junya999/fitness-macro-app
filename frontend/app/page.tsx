@@ -108,7 +108,7 @@ export default function Home() {
           <h2 className="font-bold text-neutral-300 mb-4">24時間食事タイムライン</h2>
           <div className="space-y-4 max-h-[400px] md:max-h-[550px] overflow-y-auto pr-1">
             {hours.map((h) => {
-              const hourMeals = summary.meals.filter(m => m.eaten_time ? parseInt(m.eaten_time.split(":")) === h : false);
+              const hourMeals = summary.meals.filter(m => m.eaten_time ? parseInt(m.eaten_time.split(":")[0]) === h : false);
               return (
                 <div key={h} className="flex gap-3 md:gap-4 items-center min-h-[46px] border-b border-neutral-800/40 pb-2.5 last:border-0">
                   <div className="w-10 text-neutral-500 font-bold text-right tabular-nums">{String(h).padStart(2, "0")}:00</div>
